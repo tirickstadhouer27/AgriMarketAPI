@@ -19,10 +19,12 @@ namespace AgriMarketAPI.Controllers
                 return BadRequest(new { message = "A valid email address is required." });
             }
 
-            newFarmer.FarmerId = _farmers.Count + 1;
+            // FIX: Changed from FarmerId to Id
+            newFarmer.Id = _farmers.Count + 1;
             _farmers.Add(newFarmer);
 
-            return CreatedAtRoute(new { id = newFarmer.FarmerId }, newFarmer);
+            // FIX: Changed from newFarmer.FarmerId to newFarmer.Id
+            return CreatedAtAction(nameof(RegisterFarmer), new { id = newFarmer.Id }, newFarmer);
         }
     }
 }
