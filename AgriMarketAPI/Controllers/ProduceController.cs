@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using AgriMarketAPI.Models;
-using System.Collections.Generic;
-using System.Linq;
+using AgriMarketAPI.Models.Enums;
+using AgriMarketAPI.Repositories;
+using AgriMarketAPI.Exceptions;
+using System;
 
 namespace AgriMarketAPI.Controllers
 {
@@ -9,55 +11,56 @@ namespace AgriMarketAPI.Controllers
     [Route("api/[controller]")]
     public class ProduceController : ControllerBase
     {
-        // Static In-Memory List (Ch. 6: Collections)
-        // This persists as long as the application is running
-        private static List<ProduceListing> _listings = new List<ProduceListing>
-        {
-            new ProduceListing(1, "Potatoes", "Vegetables", 15.50, 100, true),
-            new ProduceListing(2, "Tomatoes", "Vegetables", 20.00, 50, false),
-            new ProduceListing(3, "Apples", "Fruit", 25.00, 200, true)
-        };
+        // Instantiating our repository layer (Manual dependency injection for now)
+        private static readonly ProduceRepository _repository = new ProduceRepository();
 
-        // TC-01: GET all listings
         [HttpGet]
-        public ActionResult<IEnumerable<ProduceListing>> GetAll()
-        {
-            return Ok(_listings);
-        }
+        public IActionResult GetAll() => Ok(_repository.GetAll());
 
-        // TC-03: POST a new listing
-        [HttpPost]
-        public ActionResult Create([FromBody] ProduceListing newListing)
-        {
-            _listings.Add(newListing);
-            // Returns 201 Created status code
-            return CreatedAtAction(nameof(GetAll), new { id = newListing.ListingId }, newListing);
-        }
-
-        // TC-04: GET only available items (Ch. 5: Selection/Filtering)
         [HttpGet("available")]
-        public ActionResult<IEnumerable<ProduceListing>> GetAvailable()
-        {
-            var availableItems = _listings.Where(l => l.IsAvailable).ToList();
-            return Ok(availableItems);
-        }
+        public IActionResult GetAvailable() => Ok(_repository.GetAvailable());
 
-        // TC-05: GET by Category (Ch. 5: Selection/Switch logic)
         [HttpGet("category/{category}")]
-        public ActionResult<IEnumerable<ProduceListing>> GetByCategory(string category)
+        public IActionResult GetByCategory(Category category) => Ok(_repository.GetByCategory(category));
+
+        // TC-06 & TC-07: Using your custom exception with a try-catch block
+        [HttpGet("{id}")]
+        public IActionResult GetById(int id)
         {
-            var filtered = _listings
-                .Where(l => l.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            return Ok(filtered);
+            try
+            {
+                var listing = _repository.GetById(id);
+                return Ok(listing);
+            }
+            catch (ListingNotFoundException ex)
+            {
+                // Returns clean 404 block with custom error message
+                return NotFound(new { message = ex.Message });
+            }
         }
 
-        // Week 1 Feature: GET string summaries
-        [HttpGet("summary")]
-        public ActionResult<IEnumerable<string>> GetSummaries()
+        [HttpPost]
+        public IActionResult Create([FromBody] ProduceListing newListing)
         {
-            var summaries = _listings.Select(l => l.GetFormattedSummary()).ToList();
-            return Ok(summaries);
+            // Input Validation Guards
+            if (string.IsNullOrWhiteSpace(newListing.ProductName) || newListing.ProductName.Length < 3)
+            {
+                return BadRequest(new { message = "Product name must be at least 3 characters long." });
+            }
+            if (newListing.PricePerKg <= 0)
+            {
+                return BadRequest(new { message = "Price per kilogram must be greater than zero." });
+            }
+
+            try
+            {
+                _repository.Add(newListing);
+                return CreatedAtAction(nameof(GetById), new { id = newListing.ListingId }, newListing);
+            }
+            catch (FormatException ex)
+            {
+                return BadRequest(new { message = "Invalid data format provided.", details = ex.Message });
+            }
         }
     }
 }
